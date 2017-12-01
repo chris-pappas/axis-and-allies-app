@@ -1,77 +1,38 @@
-import string
-import sys
+import copy
 import json
 import random
 
-### requirements
-# 1) interactive window
-#
-# objective: keep track of all info in a dictionary, or json (probably json)
-# keep track of team name, turn #, cracked value, and all text sent
-
-# later, need to be able to take all entries from other teams that have cracked
-# value of false, change it to true and print out all their text messages
-
-# when code is reincrypted cracked value for new entries are set to false
-
-# keep information in python data types, and then load to json format before
-# writing to file
-
-#list of turns
-# germany, soviet union, japan, united states, china, united kingdom, italy,
-# anzac
-#
-#
-# Post steve chat to-dos:
-# 1)Update rounds 2)get absolute turn number 3)implement cracking features
-# a) features to add: i) command to try to crack code (crack attempt - once per turn)
-#                   ii) IPC to increase chances of cracking code
-# 1) Add country names to turn ids? DONE
-# 2) Add ability to crack opponents code DONE
-# 3) Add ability to increase your chances of cracking your opponents code
-# 4) Add functionality to read all messages that you cracked from opponent DONE
-
-#5 IPCS INCREASES CRACK ODDS BY 16%
-#doing X/48 for probs. 4/48 axis and 3/48 allies
-
-def check_if_cracked(path_to_check):
+def is_cracked(path_to_check):
     '''
     Returns True if "cracked", False if "not_cracked"
     '''
     with open(path_to_check) as data_file:
         data = json.load(data_file)
 
-    #print data
-    cracked_value = str(data[0])
-    #print type(cracked_value)
-    #print repr(cracked_value)
-
+    cracked_value = data['security']
 
     if cracked_value == "cracked":
-        #print "it's true"
         return True
-    else:
-        #print "it's false"
-        return False
+    return False
 
-def encrypt_future_messages(path_to_check,game_info_dict,turn_string):
+
+def encrypt_future_messages(path_to_check, current_turn):
     '''
     Changes the cracked value of your json file to not_cracked.
     Also updates current turn's message_security value to not_cracked.
     '''
-    #json file update
+    # json file update
     with open(path_to_check) as data_file:
         data = json.load(data_file)
 
-    data[0] = "not_cracked"
-
-    json_output = json.dumps(data,  sort_keys=True, indent=4, separators=(',', ': '))
-
+    data['security'] = "not_cracked"
+    
+    json_output = json.dumps(data, sort_keys=True, indent=4, separators=(',', ': '))
     save_json_file(path_to_check, json_output)
 
-    #current turn message_security update
-    game_info_dict[turn_string][1] = "not_cracked"
-    
+    current_turn['message_security'] = "not_cracked"
+
+
 def crack_past_messages(path_to_check):
     '''
     Opens up json changing all message security entries to cracked
@@ -81,50 +42,49 @@ def crack_past_messages(path_to_check):
     with open(path_to_check) as data_file:
         data = json.load(data_file)
 
-    data[0] = "cracked"
+    data['security'] = "cracked"
     #print type(data[1])
-    #for each key in dictionary which hold turn/value pairs
-    for key in data[1]:
-        #grab the message security value
-        #print data[1][key][1]
-        data[1][key][1] = str(data[1][key][1])
-        data[1][key][1] = "cracked"
+    for turn in data['turns']:
+        turn['message_security'] = "cracked"
 
     json_output = json.dumps(data,  sort_keys=True, indent=4, separators=(',', ': '))
-
     save_json_file(path_to_check, json_output)
 
-def attempt_to_crack(numerator, denominator):
+
+def successful_crack_attempt(numerator, denominator):
     '''
     Use randint to see if crack attempt is successful.
 
-    Your chances are something like 4/48 (numerator/denominator). If the randint is less than or equal to the numerator, success.
-    For example, if you have a 4/48 chance, if the randint created with range 1-48 is 1,2,3,or 4, it's successful.
+    Your chances are something like 4/48 (numerator/denominator).
+    If the randint is less than or equal to the numerator, success.
+    For example, if you have a 4/48 chance, if the randint created
+    with range 1-48 is 1,2,3,or 4, it's successful.
     '''
 
-    crack_roll = random.randint(1,denominator)
+    crack_roll = random.randint(1, denominator)
     if crack_roll <= numerator:
-        print "Cracking enemy come encryption..."
+        print("Cracking enemy code encryption...")
         return True
-        
-    else:
-        print "Unable to crack enemy code."
-        return False
-        
+    print("Unable to crack enemy code.")
+    return False
+
+
 def read_stored_messages(path_to_check):
     '''
     Reads all messages from JSON file
     '''
-    
-    #json file update
+
+    # json file update
     with open(path_to_check) as data_file:
         data = json.load(data_file)
 
-    for key in data[1]:
-        #print data[1][key][2]
-        print key ,
-        print " - " ,
-        print ', '.join(data[1][key][2])
+    for turn in data['turns']:
+        print('\n')
+        print(turn['turn'])
+        if turn['message_security'] == 'cracked':
+            for message in turn['messages']:
+                print(' -- {}'.format(message))
+        
     
 def save_json_file(path_to_save, json_data):
     '''
@@ -132,8 +92,8 @@ def save_json_file(path_to_save, json_data):
     '''
     
     with open(path_to_save, 'w') as save_file:
-                
         save_file.write(json_data)
+
 
 def print_menu_banner(turn, country, team):
     
@@ -152,31 +112,28 @@ end turn - Ends your turn (saving your messages to the log).
 close program - closes the program
 =====================================
 ''' % (team, turn, country)
-    
+
+ 
 def main():
 
     team_pick = False
-    #decide what team you are for probabilities
-    while team_pick == False:
-        command = raw_input("Welcome to the game!!! Which team are you? Answer 'Axis' or 'Allies': ")
-        if command == "Axis":
+    while not team_pick:
+        command = raw_input("Welcome to the game!!! Which team are you? Answer 'Axis' or 'Allies': ").lower()
+        if command == "axis":
             your_team = command
             team_pick = True
-        elif command == "Allies":
+        elif command == "allies":
             your_team = command
             team_pick =  True
         else:
-            print "Please type 'Axis' or 'Allies'"
+            print("Please type 'axis' or 'allies'")
 
-    if your_team == "Axis":
+    if your_team == "axis":
         basic_crack_chance_num = 4
         basic_crack_chance_den = 48
-    elif your_team == "Allies":
+    elif your_team == "allies":
         basic_crack_chance_num = 3
         basic_crack_chance_den = 48
-
-
-    crack_attempt = 1
         
     # set paths to json files
     ## path to team 1
@@ -186,193 +143,155 @@ def main():
     opponent_team_path = "c:/Python27/axis_stuff.json"
 
     # list of countries
-    round_list = ["Germany", "Soviet Union", "Japan", "United States", "China", "United Kingdom", "Italy", "Anzac"]
+    round_list = [
+        "Germany",
+        "Soviet Union",
+        "Japan",
+        "United States",
+        "China",
+        "United Kingdom",
+        "Italy",
+        "Anzac"
+    ]
     round_index = 0
-
 
     # initialize turn counter
     turn = 1
     teamname = "default_teamname"
-    cracked = "not_cracked"
-    message_security = cracked
 
-    
     # initialize datatype to organize important game info
-    #
-    game_info_dict = {}
     turn_string = "turn%s-%s" % (str(turn), round_list[round_index])
-    game_info_dict[turn_string] = [teamname, message_security, ["Beginning of turn."]]
-
-    # at the beginning of each game, intitialize the game file
-    json_output = json.dumps([cracked, game_info_dict],  sort_keys=True, indent=4, separators=(',', ': '))
+    turn_template = {
+        'teamname': teamname,
+        'message_security': "not_cracked",
+        'messages': [],
+        'turn': turn_string.replace(' ', '_'),
+        'crack_attempt': False,
+    }
+ 
+    # at the beginning of each game, initialize the game file
+    game_info = {
+        'security': "not_cracked",
+        'turns': [],
+    }
+    json_output = json.dumps(
+        game_info,
+        sort_keys=True,
+        indent=4,
+        separators=(',', ': ')
+    )
     save_json_file(your_team_path, json_output)
+ 
+    current_turn = copy.deepcopy(turn_template)
     
     # main game menu
     while True:
 
-        print_menu_banner(turn,round_list[round_index],your_team)
-
+        print_menu_banner(turn, round_list[round_index], your_team)
         
-        command = raw_input("Please enter a command: ")
-
+        command = raw_input("Please enter a command: ").strip()
         if command == "m":
-
             message = raw_input("Begin typing message text: ")
-
-            #append to this turn's message log
-            game_info_dict[turn_string][2].append(message)
-            
+            current_turn['messages'].append(message)
+        
         elif command == "encrypt":
-
-            confirmation =  raw_input("Are you sure you want to spend IPCs to apply new message encryption? (y/n):")
+            confirmation =  raw_input("Are you sure you want to spend IPCs to apply new message encryption? (y/n): ")
 
             if confirmation == "y":
-                encrypt_future_messages(your_team_path, game_info_dict, turn_string)
-                print "Message encryption updated!"
-                
+                encrypt_future_messages(your_team_path, current_turn)
+                print("\nMessage encryption updated!")
             elif confirmation == "n":
-                print "Message encryption not updated."
+                print("\nMessage encryption not updated.")
             else:
-                print "Please answer with 'y' for yes or 'n' for no."
-            
+                print("\nPlease answer with 'y' for yes or 'n' for no.")
+
         elif command == "end turn":
+            print("\nYou have ended your turn.")
+            
+            game_info['turns'].append(current_turn)
 
-            print "You have ended your turn."
-            #check if they were cracked
-            if check_if_cracked(your_team_path) == True:
-                #update their cracked and message_security values
-                cracked = "cracked"
-                message_security = cracked
-                for entry in game_info_dict:
-                    game_info_dict[entry][1] = message_security
-            else:
-                cracked = "not_cracked"
-                message_security = cracked
-                
-            json_output = json.dumps([cracked, game_info_dict],  sort_keys=True, indent=4, separators=(',', ': '))
+            if is_cracked(your_team_path):
+                for entry in game_info['turns']:
+                    entry['message_security'] = "cracked"
 
+            json_output = json.dumps(
+                game_info,
+                sort_keys=True,
+                indent=4,
+                separators=(',', ': ')
+            )
+    
             save_json_file(your_team_path, json_output)
                            
-            #increment turn, and make new entry in dictionary
+            # End of turn incrementing etc
             turn += 1
             round_index += 1
-            # reset round counter
             if round_index > 7:
                 round_index = 0
             turn_string = "turn%s-%s" % (str(turn), round_list[round_index])
-            game_info_dict[turn_string] = [teamname, message_security, ["Beginning of turn."]]
 
-            crack_attempt = 1
-            
+            current_turn = copy.deepcopy(turn_template)
+            current_turn['turn'] = turn_string.replace(' ', '_')
+
         elif command == "crack":
             #get one crack attempt per turn
-            if crack_attempt == 1:
+            if not current_turn['crack_attempt']:
                 
-                confirmation =  raw_input("Would you like to spend IPCs to increase your odds of cracking\nthe enemy's code? (y/n):")
+                confirmation =  raw_input("Would you like to spend IPCs to increase your odds of cracking\nthe enemy's code? (y/n): ")
 
                 if confirmation == "y":
-
                     ipc_spend_menu = True
-                    while ipc_spend_menu == True:
-
-                        try:
-                            how_many_ipcs = input("How many IPCs would you like to spend? 5/10/15/20/25/30 for 16%/32%/48%/64%/80%/96% increase?")
-
-                            #increase numerator by 8
-                            if how_many_ipcs == 5:
-                                new_crack_chance_num = basic_crack_chance_num + 8
-                                print "Attempting to crack code with increased odds..."
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
-
-                            #increase numerator by 16
-                            elif how_many_ipcs == 10:
-                                new_crack_chance_num = basic_crack_chance_num + 16
-                                print "Attempting to crack code with increased odds..."
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
-
-                            #increase numerator by 23
-                            elif how_many_ipcs == 15:
-                                new_crack_chance_num = basic_crack_chance_num + 23
-                                print "Attempting to crack code with increased odds..."
-                                crack_roll = random.randint(1,new_crack_chance_num)
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
-
-                            #increase numerator by 31
-                            elif how_many_ipcs == 20:
-                                new_crack_chance_num = basic_crack_chance_num + 31
-                                print "Attempting to crack code with increased odds..."
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
-
-                            #increase numerator by 39
-                            elif how_many_ipcs == 25:
-                                new_crack_chance_num = basic_crack_chance_num + 39
-                                print "Attempting to crack code with increased odds..."
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
-
-                            #increase numerator by 46
-                            #always 100% chance in this case no matter what the team
-                            elif how_many_ipcs == 30:
-                                new_crack_chance_num = basic_crack_chance_num + 46
-                                print "Attempting to crack code with increased odds..."
-                                if attempt_to_crack(new_crack_chance_num, basic_crack_chance_den) == True:
-                                    crack_past_messages(opponent_team_path)
-                                crack_attempt = 0
-                                ipc_spend_menu = False
+                    while ipc_spend_menu:
+                        ipc_to_numerator_map = {
+                            '5': 8,
+                            '10': 16,
+                            '15': 23,
+                            '20': 31,
+                            '25': 39,
+                            '30': 46,
+                        }
+                        ipcs_value = raw_input("How many IPCs would you like to spend? 5/10/15/20/25/30 for 16%/32%/48%/64%/80%/96% increase?")
+                        if ipcs_value in ['5', '10', '15', '20', '25', '30',]:
+                            print("\nAttempting to crack code with increased odds...")
                             
-                        except:
-                            print "Please enter any of the following values: 5,10,15,20,25,30"
+                            new_crack_chance_num = basic_crack_chance_num + ipc_to_numerator_map[ipcs_value]
+                            if successful_crack_attempt(new_crack_chance_num, basic_crack_chance_den):
+                                crack_past_messages(opponent_team_path)
+                            current_turn['crack_attempt'] = True
+                            ipc_spend_menu = False
+                            
+                        else:
+                            print("\nPlease enter any of the following values: 5,10,15,20,25,30")
 
                 elif confirmation == "n":
-                    print "Attemping to crack their code without increased odds..."
-                    #run regular chances here
-                    crack_roll = random.randint(1,basic_crack_chance_den)
+                    print("\nAttempting to crack their code without increased odds...")
+                    # run regular chances here
+                    crack_roll = random.randint(1, basic_crack_chance_den)
                     if crack_roll <= basic_crack_chance_num:
-                        print "Cracking enemy come encryption..."
+                        print("\nCracking enemy come encryption...")
                         crack_past_messages(opponent_team_path)
-                        
                     else:
-                        print "Unable to crack enemy code."
+                        print("\nUnable to crack enemy code.")
 
-                    crack_attempt = 0
+                    current_turn['crack_attempt'] = True
                     
                 else:
-                    print "Please answer with 'y' for yes or 'n' for no."
+                    print("\nPlease answer with 'y' for yes or 'n' for no.")
                 
             else:
-                print "You can only try to crack the enemy's code once per turn."
+                print("\nYou can only try to crack the enemy's code once per turn.")
 
         elif command == "read":
-            print "Reading enemy communications..."
+            print("\nReading enemy communications...")
 
-            if check_if_cracked(opponent_team_path) == True:
+            if is_cracked(opponent_team_path):
                 read_stored_messages(opponent_team_path)
             else:
-                print "Your enemy's communication channels are encrypted."
-                
+                print("\nYour enemy's communication channels are encrypted.")
+    
         elif command == "close program":
             return False
-
-        #elif command == "p":
-        #    print game_info_dict[turn_string][2]
-           
-        
         else:
-            print "Did not recognize command."
-            
+            print("\nDid not recognize command.")
             
 main()
